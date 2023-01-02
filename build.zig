@@ -11,22 +11,14 @@ pub fn build(b: *std.build.Builder) !void {
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();
 
-
-    // const lib = try libxml2.create(b, target, mode, .{
-    //     // These are the minimal options to NOT depend on any other libraries.
-    //     // If you have these libraries, just set these to true.
-    //     .iconv = false,
-    //     .lzma = false,
-    //     .zlib = false,
-    // });
-
     const exe = b.addExecutable("xmlparser", "src/main.zig");
 
     exe.addIncludePath("/usr/include/libxml2");
 
-    // link against libc & libxml2
     exe.linkLibC();
-    exe.linkSystemLibrary("xml2");
+    exe.linkSystemLibrary("xml2"); // libxml2-dev
+    exe.linkSystemLibrary("zip"); // libzip-dev
+
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.install();

@@ -2,15 +2,10 @@ const c = @cImport({
     @cInclude("stdio.h");
     @cInclude("libxml/parser.h");
     @cInclude("libxml/xmlreader.h");
+    @cInclude("zip.h");
 });
 
 const std = @import("std");
-
-const Color = enum(u32) {
-    red = 0xff0000,
-    green = 0x00ff00,
-    blue = 0x0000ff,
-};
 
 // enums for NodeType - https://www.gnu.org/software/dotgnu/pnetlib-doc/System/Xml/XmlNodeType.html
 const NodeType = enum(c_int) {
@@ -35,8 +30,7 @@ const NodeType = enum(c_int) {
 };
 
 // define parser options to ignore whitespace, etc.
-const parseOptions = c.XML_PARSE_NOBLANKS | c.XML_PARSE_NOCDATA | c.XML_PARSE_NOENT | c.XML_PARSE_NOERROR | c.XML_PARSE_NOWARNING | c.XML_PARSE_NONET;
-
+const parseOptions = c.XML_PARSE_NOBLANKS | c.XML_PARSE_NOCDATA | c.XML_PARSE_NOENT | c.XML_PARSE_NONET;
 
 // print the node type
 fn printNodeTypeName(nodeType: NodeType) void {
@@ -82,6 +76,26 @@ fn processNode(reader: ?*c.xmlTextReader) !void {
     std.debug.print("\n", .{});
 }
 
+// read a zipfile
+fn openZipFile(path: [*c]const u8) !void {
+    const zip = c.zip_open(path, c.ZIP_RDONLY, null);
+    defer _ = c.zip_close(zip);
+    if (zip == null) {
+        std.debug.print("error: Failed to open zip file\n", .{});
+    }
+
+    var i: u64 = 0;
+    var stat: c.zip_stat_t = undefined;
+    while (true) {
+        const ret = c.zip_stat_index(zip, i, 0, &stat);
+        if (ret != 0) {
+            break;
+        }
+        std.debug.print("name: {s}\n", .{stat.name});
+        i += 1;
+    }
+}
+
 pub fn main() !void {
     // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
 
@@ -94,32 +108,28 @@ pub fn main() !void {
 
     // try bw.flush(); // don't forget to flush!
 
+    openZipFile("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx") catch |err| {
+        std.debug.print("error: {s}\n", .{err});
+    };
 
-    const reader = c.xmlReaderForFile("src/test/test.xml", null, parseOptions);
-    defer c.xmlFreeTextReader(reader);
-    // check reader != null
-    if (reader == null) {
-        std.debug.print("reader is null\n", .{});
-        return;
-    }
+    // const reader = c.xmlReaderForFile("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx", null, parseOptions);
+    // defer c.xmlFreeTextReader(reader);
+    // // check reader != null
+    // if (reader == null) {
+    //     std.debug.print("reader is null\n", .{});
+    //     return;
+    // }
 
-    var ret = c.xmlTextReaderRead(reader);
-    while (ret == 1) {
-        processNode(reader) catch |err| {
-            std.debug.print("error: {s}\n", .{err});
-        };
-        ret = c.xmlTextReaderRead(reader);
-    }
+    // var ret = c.xmlTextReaderRead(reader);
+    // while (ret == 1) {
+    //     processNode(reader) catch |err| {
+    //         std.debug.print("error: {s}\n", .{err});
+    //     };
+    //     ret = c.xmlTextReaderRead(reader);
+    // }
 }
 
 // `zig build test` to run
-
-// test "simple test" {
-//     var list = std.ArrayList(i32).init(std.testing.allocator);
-//     defer list.deinit(); // try commenting this out and see if zig detects the memory leak!
-//     try list.append(42);
-//     try std.testing.expectEqual(@as(i32, 42), list.pop());
-// }
 
 test "xml read" {
     const ctx = c.xmlNewParserCtxt();
@@ -151,3 +161,16 @@ test "xml read" {
         ret = c.xmlTextReaderRead(reader);
     }
 }
+
+// read until we find the first sheet
+// var ret = c.xmlTextReaderRead(reader);
+// while (ret == 1) {
+//     const name = c.xmlTextReaderConstName(reader);
+//     if (name != null) {
+//         if (std.mem.eql(u8, name, "sheet")) {
+//             return reader;
+//         }
+//     }
+//     ret = c.xmlTextReaderRead(reader);
+// }
+// return error.NoSheetFound;
