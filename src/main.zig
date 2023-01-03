@@ -77,7 +77,7 @@ fn processNode(reader: ?*c.xmlTextReader) !void {
 }
 
 // accepts a path to the zip file and returns a buffer containing the contents of internal file
-fn readZipFileContents(path: [*c]const u8, filename: [*c]const u8) !*[]u8 {
+fn readZipFileContents(path: [*c]const u8, filename: [*c]const u8) ![]u8 {
     const archive = c.zip_open(path, c.ZIP_RDONLY, null);
     defer _ = c.zip_close(archive);
     if (archive == null) {
@@ -117,7 +117,7 @@ fn readZipFileContents(path: [*c]const u8, filename: [*c]const u8) !*[]u8 {
         std.debug.print("error: Failed to read {s}\n", .{filename});
         return error.FailedToReadSharedStrings;
     }
-    return &buf;
+    return buf;
 }
 
 pub fn main() !void {
@@ -132,13 +132,29 @@ pub fn main() !void {
 
     // try bw.flush(); // don't forget to flush!
 
-    const sharedStringsBufPtr = try readZipFileContents("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx", "xl/sharedStrings.xml");
-    std.debug.print("{s}\n", .{sharedStringsBufPtr.*});
+    const sharedStringsBuf = try readZipFileContents("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx", "xl/sharedStrings.xml");
+    std.debug.print("{s}\n", .{sharedStringsBuf[0..]});
 
-    const worksheetBufPtr = try readZipFileContents("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx", "xl/worksheets/sheet1.xml");
-    std.debug.print("{s}\n", .{worksheetBufPtr.*});
+    const reader = c.xmlReaderForMemory(sharedStringsBuf.ptr, @intCast(c_int, sharedStringsBuf.len), null, null, 0);
+    defer c.xmlFreeTextReader(reader);
+    // check reader != null
+    if (reader == null) {
+        std.debug.print("reader is null\n", .{});
+        return;
+    }
 
-    // const reader = c.xmlReaderForFile("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx", null, parseOptions);
+    var ret = c.xmlTextReaderRead(reader);
+    while (ret == 1) {
+        processNode(reader) catch |err| {
+            std.debug.print("error: {s}\n", .{err});
+        };
+        ret = c.xmlTextReaderRead(reader);
+    }
+
+    // const worksheetBuf = try readZipFileContents("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx", "xl/worksheets/sheet1.xml");
+    // std.debug.print("{s}\n", .{worksheetBuf[0..]});
+
+    // const reader = c.xmlReaderForMemory(worksheetBuf.ptr, @intCast(c_int, worksheetBuf.len), null, null, 0);
     // defer c.xmlFreeTextReader(reader);
     // // check reader != null
     // if (reader == null) {
