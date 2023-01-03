@@ -76,24 +76,48 @@ fn processNode(reader: ?*c.xmlTextReader) !void {
     std.debug.print("\n", .{});
 }
 
-// read a zipfile
-fn openZipFile(path: [*c]const u8) !void {
-    const zip = c.zip_open(path, c.ZIP_RDONLY, null);
-    defer _ = c.zip_close(zip);
-    if (zip == null) {
+// accepts a path to the zip file and returns a buffer containing the contents of internal file
+fn readZipFileContents(path: [*c]const u8, filename: [*c]const u8) !*[]u8 {
+    const archive = c.zip_open(path, c.ZIP_RDONLY, null);
+    defer _ = c.zip_close(archive);
+    if (archive == null) {
         std.debug.print("error: Failed to open zip file\n", .{});
+        return error.FailedToOpenZipFile;
     }
 
     var i: u64 = 0;
     var stat: c.zip_stat_t = undefined;
     while (true) {
-        const ret = c.zip_stat_index(zip, i, 0, &stat);
+        const ret = c.zip_stat_index(archive, i, 0, &stat);
         if (ret != 0) {
             break;
         }
         std.debug.print("name: {s}\n", .{stat.name});
         i += 1;
     }
+
+    // open filename and stat size
+    const ret = c.zip_stat(archive, filename, 0, &stat);
+    if (ret != 0) {
+        std.debug.print("error: Failed to open {s}\n", .{filename});
+        return error.FailedToOpenSharedStrings;
+    }
+    std.debug.print("size is {d} chars\n", .{stat.size});
+    const strs = c.zip_fopen(archive, filename, 0);
+    defer _ = c.zip_fclose(strs);
+    if (strs == null) {
+        std.debug.print("error: Failed to open {s}\n", .{filename});
+        return error.FailedToOpenSharedStrings;
+    }
+
+    // load file contents into buffer
+    var buf = try std.heap.c_allocator.alloc(u8, stat.size);
+    const read = c.zip_fread(strs, buf.ptr, stat.size);
+    if (read != stat.size) {
+        std.debug.print("error: Failed to read {s}\n", .{filename});
+        return error.FailedToReadSharedStrings;
+    }
+    return &buf;
 }
 
 pub fn main() !void {
@@ -108,9 +132,11 @@ pub fn main() !void {
 
     // try bw.flush(); // don't forget to flush!
 
-    openZipFile("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx") catch |err| {
-        std.debug.print("error: {s}\n", .{err});
-    };
+    const sharedStringsBufPtr = try readZipFileContents("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx", "xl/sharedStrings.xml");
+    std.debug.print("{s}\n", .{sharedStringsBufPtr.*});
+
+    const worksheetBufPtr = try readZipFileContents("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx", "xl/worksheets/sheet1.xml");
+    std.debug.print("{s}\n", .{worksheetBufPtr.*});
 
     // const reader = c.xmlReaderForFile("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx", null, parseOptions);
     // defer c.xmlFreeTextReader(reader);
