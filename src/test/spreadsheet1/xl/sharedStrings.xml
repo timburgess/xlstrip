@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="35" uniqueCount="32">
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="35" uniqueCount="31">
   <si>
     <t>Pid</t>
   </si>
@@ -40,36 +40,7 @@
     <t>Approved</t>
   </si>
   <si>
-    <t> °C</t>
-  </si>
-  <si>
     <t>FT-0402</t>
-  </si>
-  <si>
-    <r>
-      <t>Nm</t>
-    </r>
-    <r>
-      <rPr>
-        <vertAlign val="superscript"/>
-        <sz val="12"/>
-        <color theme="1"/>
-        <rFont val="Calibri"/>
-        <family val="2"/>
-        <scheme val="minor"/>
-      </rPr>
-      <t>3</t>
-    </r>
-    <r>
-      <rPr>
-        <sz val="12"/>
-        <color theme="1"/>
-        <rFont val="Calibri"/>
-        <family val="2"/>
-        <scheme val="minor"/>
-      </rPr>
-      <t>/h</t>
-    </r>
   </si>
   <si>
     <t>FV-0601</t>
@@ -84,22 +55,6 @@
     <t>R1</t>
   </si>
   <si>
-    <r>
-      <t>N/m</t>
-    </r>
-    <r>
-      <rPr>
-        <vertAlign val="superscript"/>
-        <sz val="12"/>
-        <color theme="1"/>
-        <rFont val="Calibri"/>
-        <family val="2"/>
-        <scheme val="minor"/>
-      </rPr>
-      <t>3</t>
-    </r>
-  </si>
-  <si>
     <t>PT-0604</t>
   </si>
   <si>
@@ -107,22 +62,6 @@
   </si>
   <si>
     <t>R2</t>
-  </si>
-  <si>
-    <r>
-      <t>kg/m</t>
-    </r>
-    <r>
-      <rPr>
-        <vertAlign val="superscript"/>
-        <sz val="12"/>
-        <color theme="1"/>
-        <rFont val="Calibri"/>
-        <family val="2"/>
-        <scheme val="minor"/>
-      </rPr>
-      <t>3</t>
-    </r>
   </si>
   <si>
     <t>Ok</t>
@@ -144,5 +83,14 @@
   </si>
   <si>
     <t>Observations</t>
+  </si>
+  <si>
+    <t>°C</t>
+  </si>
+  <si>
+    <t>Nm3/h</t>
+  </si>
+  <si>
+    <t>kg/m3</t>
   </si>
 </sst>
