@@ -78,9 +78,8 @@ fn processNode(reader: ?*c.xmlTextReader) !void {
     debug.print("\n", .{});
 }
 
-// parse the xml and return an array of all text values of <t> elements as strings
-// fn readSharedStrings(buf: []const u8) ![][]const u8 {
-fn readSharedStrings(buf: []const u8) !void {
+// parse the xml and return an array of all text values of <t> elements
+fn readSharedStrings(buf: []const u8) ![][]u8 {
     const reader = c.xmlReaderForMemory(buf.ptr, @intCast(c_int, buf.len), null, null, 0);
     defer c.xmlFreeTextReader(reader);
     // check reader != null
@@ -101,9 +100,10 @@ fn readSharedStrings(buf: []const u8) !void {
     const uniqueCountInt = try std.fmt.parseInt(u32, std.mem.span(uniqueCount), 10);
 
     // allocate an array of slices
-    var sharedStrings = try std.heap.c_allocator.alloc([]const u8, uniqueCountInt);
+    const sharedStrings = try std.heap.c_allocator.alloc([]u8, uniqueCountInt);
 
     // read the remaining nodes
+    var index: u32 = 0;
     ret = c.xmlTextReaderRead(reader);
     while (ret == 1) {
         const nodeName = c.xmlTextReaderConstName(reader);
@@ -116,7 +116,9 @@ fn readSharedStrings(buf: []const u8) !void {
                 if (@intToEnum(NodeType, nodeType) == NodeType.Text) {
                     const value = c.xmlTextReaderConstValue(reader);
                     if (value != null) {
-                        debug.print("text value: {s}\n", .{std.mem.span(value)});
+                        // allocate memory and copy the value to sharedStrings[index]
+                        sharedStrings[index] = try std.heap.c_allocator.dupe(u8, std.mem.span(value));
+                        index += 1;
                     }
                 }
             }
@@ -124,16 +126,7 @@ fn readSharedStrings(buf: []const u8) !void {
         ret = c.xmlTextReaderRead(reader);
     }
 
-    // convert stringList to [][]const u8 and return
-    // var sharedStrings = try std.heap.c_allocator.alloc([]const u8, stringList.items.len);
-    // iterate over stringList and copy each item to sharedStrings
-    // var i: usize = 0;
-    // while (i < stringList.items.len) : (i += 1) {
-    //     sharedStrings[i] = try std.heap.c_allocator.dupe(u8, stringList.items[i]);
-    // }
-
-    _ = sharedStrings;
-    // return null;
+    return sharedStrings;
 }
 
 // accepts a path to the zip file and returns a buffer containing the contents of internal file
@@ -195,11 +188,13 @@ pub fn main() !void {
     const sharedStringsBuf = try readZipFileContents("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx", "xl/sharedStrings.xml");
     debug.print("{s}\n", .{sharedStringsBuf[0..]});
 
-    try readSharedStrings(sharedStringsBuf);
-    // print the first 10 strings in arr
-    // for (arr[0..10]) |str| {
-    //     debug.print("{s}\n", .{str});
-    // }
+    const sharedStrings: [][]u8 = try readSharedStrings(sharedStringsBuf);
+    debug.print("sharedStrings loaded: {d}\n", .{sharedStrings.len});
+    for (sharedStrings) |str| {
+        debug.print("{s}\n", .{str});
+    }
+
+    // iterate over sharedStrings and print each string
 
     // const worksheetBuf = try readZipFileContents("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx", "xl/worksheets/sheet1.xml");
     // debug.print("{s}\n", .{worksheetBuf[0..]});
