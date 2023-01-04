@@ -280,7 +280,6 @@ pub fn main() !void {
     defer std.heap.c_allocator.free(sharedStrings);
     defer for (sharedStrings) |str| std.heap.c_allocator.free(str);
 
-    debug.print("Loaded {d} sharedStrings\n", .{sharedStrings.len});
     // for (sharedStrings) |str| {
     //     debug.print("{s}\n", .{str});
     // }
@@ -289,8 +288,8 @@ pub fn main() !void {
     const worksheetBuf = try readZipFileContents(spreadsheetPath, "xl/worksheets/sheet1.xml");
     // debug.print("{s}\n", .{worksheetBuf[0..]});
 
-    // call function to find all <c> nodes that have an attribute of r="B1", r="B2", etc.
-    // for each of these nodes, read the value and lookup the string in sharedStrings
+    // Call function to find all <c> nodes that have an attribute of the required column
+    // For each of these nodes, read the value and lookup the string in sharedStrings
     // and print the string
     try readSheet(worksheetBuf, col, sharedStrings);
 }
