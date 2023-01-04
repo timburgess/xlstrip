@@ -7,6 +7,7 @@ const c = @cImport({
 
 const std = @import("std");
 const debug = std.debug;
+const fs = std.fs;
 const ArrayList = std.ArrayList;
 const parseInt = std.fmt.parseInt;
 
@@ -82,7 +83,7 @@ fn processNode(reader: ?*c.xmlTextReader) !void {
 // call function to find all <c> nodes that have an attribute of r="B1", r="B2", etc.
 // for each of these nodes, read the value and lookup the string in sharedStrings
 // and print the string value
-fn readSheet(buf: []const u8, sharedStrings: [][]u8) !void {
+fn readSheet(buf: []const u8, col: []const u8, sharedStrings: [][]u8) !void {
     const reader = c.xmlReaderForMemory(buf.ptr, @intCast(c_int, buf.len), null, null, 0);
     defer c.xmlFreeTextReader(reader);
     // check reader != null
@@ -101,7 +102,7 @@ fn readSheet(buf: []const u8, sharedStrings: [][]u8) !void {
             if (rAttr != null) {
                 // debug.print("rAttr: {s}\n", .{rAttr});
                 // check if rAttr is B1, B2, etc.
-                if (std.mem.startsWith(u8, std.mem.span(rAttr), "B")) {
+                if (std.mem.startsWith(u8, std.mem.span(rAttr), col)) {
                     // debug.print("rAttr is Bsomething.\n", .{});
                     ret = c.xmlTextReaderRead(reader);
                     if (ret == 1) {
@@ -122,7 +123,7 @@ fn readSheet(buf: []const u8, sharedStrings: [][]u8) !void {
                                     const value = c.xmlTextReaderConstValue(reader);
                                     if (value != null) {
                                         const strIdx = try parseInt(u32, std.mem.span(value), 10);
-                                        debug.print("->{s}\n", .{sharedStrings[strIdx]});
+                                        debug.print("{s}\n", .{sharedStrings[strIdx]});
                                     }
                                 }
                             }
@@ -139,16 +140,13 @@ fn readSheet(buf: []const u8, sharedStrings: [][]u8) !void {
 fn readSharedStrings(buf: []const u8) ![][]u8 {
     const reader = c.xmlReaderForMemory(buf.ptr, @intCast(c_int, buf.len), null, null, 0);
     defer c.xmlFreeTextReader(reader);
-    // check reader != null
     if (reader == null) {
-        debug.print("reader is null\n", .{});
         return error.ReaderIsNull;
     }
 
     // read frootNode identify how many unique strings
     var ret = c.xmlTextReaderRead(reader);
     if (ret != 1) {
-        debug.print("ret != 1\n", .{});
         return error.ReadFailed;
     }
 
@@ -191,7 +189,7 @@ fn readZipFileContents(path: [*c]const u8, filename: [*c]const u8) ![]u8 {
     const archive = c.zip_open(path, c.ZIP_RDONLY, null);
     defer _ = c.zip_close(archive);
     if (archive == null) {
-        debug.print("error: Failed to open zip file\n", .{});
+        debug.print("error: Failed to open zip file {s}\n", .{filename});
         return error.FailedToOpenZipFile;
     }
 
@@ -230,41 +228,45 @@ fn readZipFileContents(path: [*c]const u8, filename: [*c]const u8) ![]u8 {
     return buf;
 }
 
+fn fileExists(filepath: []const u8) bool {
+    var file = fs.cwd().openFile(filepath, .{}) catch return false;
+    file.close();
+    return true;
+}
+
 pub fn main() !void {
-    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
+    const spreadsheet = "src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx";
+    const col = "B";
 
-    // stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    // const stdout_file = std.io.getStdOut().writer();
-    // var bw = std.io.bufferedWriter(stdout_file);
-    // const stdout = bw.writer();
+    if (!fileExists(spreadsheet)) {
+        debug.print("error: File {s} does not exist\n", .{spreadsheet});
+        return;
+    }
 
-    // try bw.flush(); // don't forget to flush!
-
-    const sharedStringsBuf = try readZipFileContents("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx", "xl/sharedStrings.xml");
+    // load all strings used in the spreadsheet (aka 'shared strings')
+    const sharedStringsBuf = try readZipFileContents(spreadsheet, "xl/sharedStrings.xml");
     // debug.print("{s}\n", .{sharedStringsBuf[0..]});
 
     const sharedStrings: [][]u8 = try readSharedStrings(sharedStringsBuf);
     defer std.heap.c_allocator.free(sharedStrings);
     defer for (sharedStrings) |str| std.heap.c_allocator.free(str);
 
-    debug.print("sharedStrings loaded: {d}\n", .{sharedStrings.len});
-    for (sharedStrings) |str| {
-        debug.print("{s}\n", .{str});
-    }
+    debug.print("Loaded {d} sharedStrings\n", .{sharedStrings.len});
+    // for (sharedStrings) |str| {
+    //     debug.print("{s}\n", .{str});
+    // }
 
     // load worksheet
-    const worksheetBuf = try readZipFileContents("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx", "xl/worksheets/sheet1.xml");
+    const worksheetBuf = try readZipFileContents(spreadsheet, "xl/worksheets/sheet1.xml");
     // debug.print("{s}\n", .{worksheetBuf[0..]});
 
     // call function to find all <c> nodes that have an attribute of r="B1", r="B2", etc.
     // for each of these nodes, read the value and lookup the string in sharedStrings
     // and print the string
-    try readSheet(worksheetBuf, sharedStrings);
+    try readSheet(worksheetBuf, col, sharedStrings);
 }
 
-// `zig build test` to run
+// `zig build test` to run tests
 
 test "xml read" {
     const ctx = c.xmlNewParserCtxt();
@@ -296,16 +298,3 @@ test "xml read" {
         ret = c.xmlTextReaderRead(reader);
     }
 }
-
-// read until we find the first sheet
-// var ret = c.xmlTextReaderRead(reader);
-// while (ret == 1) {
-//     const name = c.xmlTextReaderConstName(reader);
-//     if (name != null) {
-//         if (std.mem.eql(u8, name, "sheet")) {
-//             return reader;
-//         }
-//     }
-//     ret = c.xmlTextReaderRead(reader);
-// }
-// return error.NoSheetFound;
