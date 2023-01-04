@@ -11,7 +11,7 @@ pub fn build(b: *std.build.Builder) !void {
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();
 
-    const exe = b.addExecutable("xmlparser", "src/main.zig");
+    const exe = b.addExecutable("xlstrip", "src/main.zig");
 
     exe.addIncludePath("/usr/include/libxml2");
 

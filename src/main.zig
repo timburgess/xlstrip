@@ -7,6 +7,7 @@ const c = @cImport({
 const std = @import("std");
 const debug = std.debug;
 const fs = std.fs;
+const stderr = std.io.getStdErr().writer();
 const ArrayList = std.ArrayList;
 const parseInt = std.fmt.parseInt;
 
@@ -249,17 +250,30 @@ fn fileExists(filepath: []const u8) bool {
     return true;
 }
 
+//
+// commandline args should be 1) xlsx file path 2) column to read e.g. B
+// e.g. ./xlstrip "src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx" "B"
+//
 pub fn main() !void {
-    const spreadsheet = "src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx";
-    const col = "B";
 
-    if (!fileExists(spreadsheet)) {
-        debug.print("error: File {s} does not exist\n", .{spreadsheet});
+    const args = try std.process.argsAlloc(std.heap.c_allocator);
+    defer std.process.argsFree(std.heap.c_allocator, args);
+
+    if (args.len < 3) {
+        try stderr.print("error: Expected 2 arguments, got {d}\n", .{args.len - 1});
         return;
     }
 
+    const spreadsheetPath = args[1];
+    if (!fileExists(spreadsheetPath)) {
+        debug.print("error: File {s} does not exist\n", .{spreadsheetPath});
+        return;
+    }
+
+    const col = args[2];
+
     // load all strings used in the spreadsheet (aka 'shared strings')
-    const sharedStringsBuf = try readZipFileContents(spreadsheet, "xl/sharedStrings.xml");
+    const sharedStringsBuf = try readZipFileContents(spreadsheetPath, "xl/sharedStrings.xml");
     // debug.print("{s}\n", .{sharedStringsBuf[0..]});
 
     const sharedStrings: [][]u8 = try readSharedStrings(sharedStringsBuf);
@@ -272,7 +286,7 @@ pub fn main() !void {
     // }
 
     // load worksheet
-    const worksheetBuf = try readZipFileContents(spreadsheet, "xl/worksheets/sheet1.xml");
+    const worksheetBuf = try readZipFileContents(spreadsheetPath, "xl/worksheets/sheet1.xml");
     // debug.print("{s}\n", .{worksheetBuf[0..]});
 
     // call function to find all <c> nodes that have an attribute of r="B1", r="B2", etc.
