@@ -1,5 +1,4 @@
 const c = @cImport({
-    @cInclude("stdio.h");
     @cInclude("libxml/parser.h");
     @cInclude("libxml/xmlreader.h");
     @cInclude("zip.h");
@@ -60,77 +59,93 @@ fn printNodeTypeName(nodeType: NodeType) void {
     }
 }
 
-fn processNode(reader: ?*c.xmlTextReader) !void {
-    const name = c.xmlTextReaderConstName(reader);
-    const value = c.xmlTextReaderConstValue(reader);
-    if (name != null) {
-        debug.print("name: {s}\n", .{name});
-    } else {
-        debug.print("name is null\n", .{});
-    }
-    if (value != null) {
-        debug.print("value: {s}\n", .{value});
-    } else {
-        debug.print("value is null\n", .{});
-    }
-    const nodeType = c.xmlTextReaderNodeType(reader);
-    // convert to NodeType enum
-    printNodeTypeName(@intToEnum(NodeType, nodeType));
 
-    debug.print("\n", .{});
+fn checkColumnNodeForCell(reader: ?*c.xmlTextReader, col: []const u8) !?u32 {
+    const nodeName = c.xmlTextReaderConstName(reader);
+
+    // if node is not <c> return
+    if (!std.mem.eql(u8, std.mem.span(nodeName), "c")) {
+        return null;
+    }
+
+    const rAttr = c.xmlTextReaderGetAttribute(reader, "r");
+    if (rAttr == null) {
+        return null;
+    }
+    defer c.free(rAttr);
+    // debug.print("rAttr: {s}\n", .{rAttr});
+
+    // check if rAttr is a cell of desired column
+    if (!std.mem.startsWith(u8, std.mem.span(rAttr), col)) {
+        return null;
+    }
+    // debug.print("rAttr is of col {s}.\n", .{col});
+
+    // advance to next node
+    var ret = c.xmlTextReaderRead(reader);
+    if (ret == -1) {
+        return error.XMLReadError;
+    }
+    if (ret == 0) { // end of document
+        return null;
+    }
+
+    const nextNodeName = c.xmlTextReaderConstName(reader);
+    if (!std.mem.eql(u8, std.mem.span(nextNodeName), "v")) {
+        return null;
+    }
+    // debug.print("vNodeName is v: {s}\n", .{vNodeName});
+
+    // advance to next (text) node
+    ret = c.xmlTextReaderRead(reader);
+    if (ret == -1) {
+        return error.XMLReadError;
+    }
+    if (ret == 0) { // end of document
+        return null;
+    }
+
+    // if next node is Text then read the value
+    const nodeType = c.xmlTextReaderNodeType(reader);
+    if (@intToEnum(NodeType, nodeType) != NodeType.Text) {
+        // unsure what this node is so return
+        return null;
+    }
+
+    const value = c.xmlTextReaderConstValue(reader);
+    if (value == null) {
+        return null;
+    }
+
+    return try parseInt(u32, std.mem.span(value), 10);
 }
 
-// call function to find all <c> nodes that have an attribute of r="B1", r="B2", etc.
-// for each of these nodes, read the value and lookup the string in sharedStrings
-// and print the string value
+// function to find all <c> nodes that have an attribute of r that matches the column
+// e.g. r="B1", r="B2", etc.
+//
+//   <sheetData>
+//    <row r="1" spans="1:16">
+//      <c r="B1" t="s">
+//        <v>22</v>
+//      </c>
+//      <c r="C1" t="s">
+//        <v>0</v>
+//      </c>
+//
+// for each of these nodes, read the <v> text node and lookup the string in sharedStrings
+//
 fn readSheet(buf: []const u8, col: []const u8, sharedStrings: [][]u8) !void {
     const reader = c.xmlReaderForMemory(buf.ptr, @intCast(c_int, buf.len), null, null, 0);
-    defer c.xmlFreeTextReader(reader);
-    // check reader != null
     if (reader == null) {
-        debug.print("reader is null\n", .{});
         return error.ReaderIsNull;
     }
+    defer c.xmlFreeTextReader(reader);
 
     var ret = c.xmlTextReaderRead(reader);
     while (ret == 1) {
-        const nodeName = c.xmlTextReaderConstName(reader);
-        // if node is <c> then check for r="B1" attribute
-        if (std.mem.eql(u8, std.mem.span(nodeName), "c")) {
-            // debug.print("nodeName is c: {s}\n", .{nodeName});
-            const rAttr = c.xmlTextReaderGetAttribute(reader, "r");
-            if (rAttr != null) {
-                // debug.print("rAttr: {s}\n", .{rAttr});
-                // check if rAttr is B1, B2, etc.
-                if (std.mem.startsWith(u8, std.mem.span(rAttr), col)) {
-                    // debug.print("rAttr is Bsomething.\n", .{});
-                    ret = c.xmlTextReaderRead(reader);
-                    if (ret == 1) {
-                        // debug.print("successfully read next node.\n", .{});
-                        const vNodeName = c.xmlTextReaderConstName(reader);
-                        if (std.mem.eql(u8, std.mem.span(vNodeName), "v")) {
-                            // debug.print("vNodeName is v: {s}\n", .{vNodeName});
-                            ret = c.xmlTextReaderRead(reader);
-                            if (ret == 1) {
-                                // debug.print("successfully read next node.\n", .{});
-                                // if next node is Text then read the value
-                                const nodeType = c.xmlTextReaderNodeType(reader);
-                                // debug.print("nodeType: {d}\n", .{nodeType});
-
-                                if (@intToEnum(NodeType, nodeType) == NodeType.Text) {
-                                    // debug.print("nodeType is Text.\n", .{});
-
-                                    const value = c.xmlTextReaderConstValue(reader);
-                                    if (value != null) {
-                                        const strIdx = try parseInt(u32, std.mem.span(value), 10);
-                                        debug.print("{s}\n", .{sharedStrings[strIdx]});
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        const sharedIndex = try checkColumnNodeForCell(reader, col);
+        if (sharedIndex != null) {
+            debug.print("{s}\n", .{sharedStrings[sharedIndex.?]});
         }
         ret = c.xmlTextReaderRead(reader);
     }
