@@ -8,6 +8,7 @@ const c = @cImport({
 const std = @import("std");
 const debug = std.debug;
 const ArrayList = std.ArrayList;
+const parseInt = std.fmt.parseInt;
 
 // enums for NodeType - https://www.gnu.org/software/dotgnu/pnetlib-doc/System/Xml/XmlNodeType.html
 const NodeType = enum(c_int) {
@@ -78,6 +79,62 @@ fn processNode(reader: ?*c.xmlTextReader) !void {
     debug.print("\n", .{});
 }
 
+// call function to find all <c> nodes that have an attribute of r="B1", r="B2", etc.
+// for each of these nodes, read the value and lookup the string in sharedStrings
+// and print the string value
+fn readSheet(buf: []const u8, sharedStrings: [][]u8) !void {
+    const reader = c.xmlReaderForMemory(buf.ptr, @intCast(c_int, buf.len), null, null, 0);
+    defer c.xmlFreeTextReader(reader);
+    // check reader != null
+    if (reader == null) {
+        debug.print("reader is null\n", .{});
+        return error.ReaderIsNull;
+    }
+
+    var ret = c.xmlTextReaderRead(reader);
+    while (ret == 1) {
+        const nodeName = c.xmlTextReaderConstName(reader);
+        // if node is <c> then check for r="B1" attribute
+        if (std.mem.eql(u8, std.mem.span(nodeName), "c")) {
+            // debug.print("nodeName is c: {s}\n", .{nodeName});
+            const rAttr = c.xmlTextReaderGetAttribute(reader, "r");
+            if (rAttr != null) {
+                // debug.print("rAttr: {s}\n", .{rAttr});
+                // check if rAttr is B1, B2, etc.
+                if (std.mem.startsWith(u8, std.mem.span(rAttr), "B")) {
+                    // debug.print("rAttr is Bsomething.\n", .{});
+                    ret = c.xmlTextReaderRead(reader);
+                    if (ret == 1) {
+                        // debug.print("successfully read next node.\n", .{});
+                        const vNodeName = c.xmlTextReaderConstName(reader);
+                        if (std.mem.eql(u8, std.mem.span(vNodeName), "v")) {
+                            // debug.print("vNodeName is v: {s}\n", .{vNodeName});
+                            ret = c.xmlTextReaderRead(reader);
+                            if (ret == 1) {
+                                // debug.print("successfully read next node.\n", .{});
+                                // if next node is Text then read the value
+                                const nodeType = c.xmlTextReaderNodeType(reader);
+                                // debug.print("nodeType: {d}\n", .{nodeType});
+
+                                if (@intToEnum(NodeType, nodeType) == NodeType.Text) {
+                                    // debug.print("nodeType is Text.\n", .{});
+
+                                    const value = c.xmlTextReaderConstValue(reader);
+                                    if (value != null) {
+                                        const strIdx = try parseInt(u32, std.mem.span(value), 10);
+                                        debug.print("->{s}\n", .{sharedStrings[strIdx]});
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ret = c.xmlTextReaderRead(reader);
+    }
+}
+
 // parse the xml and return an array of all text values of <t> elements
 fn readSharedStrings(buf: []const u8) ![][]u8 {
     const reader = c.xmlReaderForMemory(buf.ptr, @intCast(c_int, buf.len), null, null, 0);
@@ -88,7 +145,7 @@ fn readSharedStrings(buf: []const u8) ![][]u8 {
         return error.ReaderIsNull;
     }
 
-    // read frootNode identify how many unqiue strings
+    // read frootNode identify how many unique strings
     var ret = c.xmlTextReaderRead(reader);
     if (ret != 1) {
         debug.print("ret != 1\n", .{});
@@ -97,7 +154,7 @@ fn readSharedStrings(buf: []const u8) ![][]u8 {
 
     // get the uniqueCount attribute
     const uniqueCount = c.xmlTextReaderGetAttribute(reader, "uniqueCount");
-    const uniqueCountInt = try std.fmt.parseInt(u32, std.mem.span(uniqueCount), 10);
+    const uniqueCountInt = try parseInt(u32, std.mem.span(uniqueCount), 10);
 
     // allocate an array of slices
     const sharedStrings = try std.heap.c_allocator.alloc([]u8, uniqueCountInt);
@@ -186,34 +243,25 @@ pub fn main() !void {
     // try bw.flush(); // don't forget to flush!
 
     const sharedStringsBuf = try readZipFileContents("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx", "xl/sharedStrings.xml");
-    debug.print("{s}\n", .{sharedStringsBuf[0..]});
+    // debug.print("{s}\n", .{sharedStringsBuf[0..]});
 
     const sharedStrings: [][]u8 = try readSharedStrings(sharedStringsBuf);
+    defer std.heap.c_allocator.free(sharedStrings);
+    defer for (sharedStrings) |str| std.heap.c_allocator.free(str);
+
     debug.print("sharedStrings loaded: {d}\n", .{sharedStrings.len});
     for (sharedStrings) |str| {
         debug.print("{s}\n", .{str});
     }
 
-    // iterate over sharedStrings and print each string
-
-    // const worksheetBuf = try readZipFileContents("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx", "xl/worksheets/sheet1.xml");
+    // load worksheet
+    const worksheetBuf = try readZipFileContents("src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx", "xl/worksheets/sheet1.xml");
     // debug.print("{s}\n", .{worksheetBuf[0..]});
 
-    // const reader = c.xmlReaderForMemory(worksheetBuf.ptr, @intCast(c_int, worksheetBuf.len), null, null, 0);
-    // defer c.xmlFreeTextReader(reader);
-    // // check reader != null
-    // if (reader == null) {
-    //     debug.print("reader is null\n", .{});
-    //     return;
-    // }
-
-    // var ret = c.xmlTextReaderRead(reader);
-    // while (ret == 1) {
-    //     processNode(reader) catch |err| {
-    //         debug.print("error: {s}\n", .{err});
-    //     };
-    //     ret = c.xmlTextReaderRead(reader);
-    // }
+    // call function to find all <c> nodes that have an attribute of r="B1", r="B2", etc.
+    // for each of these nodes, read the value and lookup the string in sharedStrings
+    // and print the string
+    try readSheet(worksheetBuf, sharedStrings);
 }
 
 // `zig build test` to run
