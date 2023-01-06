@@ -6,6 +6,7 @@ const c = @cImport({
 
 const std = @import("std");
 const debug = std.debug;
+const allocator = std.heap.c_allocator; // use c allocator for now
 const fs = std.fs;
 const stderr = std.io.getStdErr().writer();
 const ArrayList = std.ArrayList;
@@ -171,7 +172,7 @@ fn readSharedStrings(buf: []const u8) ![][]u8 {
     const uniqueCountInt = try parseInt(u32, std.mem.span(uniqueCount), 10);
 
     // allocate an array of slices
-    const sharedStrings = try std.heap.c_allocator.alloc([]u8, uniqueCountInt);
+    const sharedStrings = try allocator.alloc([]u8, uniqueCountInt);
 
     // read the remaining nodes
     var index: u32 = 0;
@@ -188,7 +189,7 @@ fn readSharedStrings(buf: []const u8) ![][]u8 {
                     const value = c.xmlTextReaderConstValue(reader);
                     if (value != null) {
                         // allocate memory and copy the value to sharedStrings[index]
-                        sharedStrings[index] = try std.heap.c_allocator.dupe(u8, std.mem.span(value));
+                        sharedStrings[index] = try allocator.dupe(u8, std.mem.span(value));
                         index += 1;
                     }
                 }
@@ -235,7 +236,7 @@ fn readZipFileContents(path: [*c]const u8, filename: [*c]const u8) ![]u8 {
     }
 
     // load file contents into buffer
-    var buf = try std.heap.c_allocator.alloc(u8, stat.size);
+    var buf = try allocator.alloc(u8, stat.size);
     const read = c.zip_fread(strs, buf.ptr, stat.size);
     if (read != stat.size) {
         debug.print("error: Failed to read {s}\n", .{filename});
@@ -245,7 +246,7 @@ fn readZipFileContents(path: [*c]const u8, filename: [*c]const u8) ![]u8 {
 }
 
 fn fileExists(filepath: []const u8) bool {
-    var file = fs.cwd().openFile(filepath, .{}) catch return false;
+    var file = fs.cwd().openFile(filepath, .{ .mode = .read_only }) catch return false;
     file.close();
     return true;
 }
@@ -256,8 +257,8 @@ fn fileExists(filepath: []const u8) bool {
 //
 pub fn main() !void {
 
-    const args = try std.process.argsAlloc(std.heap.c_allocator);
-    defer std.process.argsFree(std.heap.c_allocator, args);
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
 
     if (args.len < 3) {
         try stderr.print("error: Expected 2 arguments, got {d}\n", .{args.len - 1});
@@ -277,8 +278,8 @@ pub fn main() !void {
     // debug.print("{s}\n", .{sharedStringsBuf[0..]});
 
     const sharedStrings: [][]u8 = try readSharedStrings(sharedStringsBuf);
-    defer std.heap.c_allocator.free(sharedStrings);
-    defer for (sharedStrings) |str| std.heap.c_allocator.free(str);
+    defer allocator.free(sharedStrings);
+    defer for (sharedStrings) |str| allocator.free(str);
 
     // for (sharedStrings) |str| {
     //     debug.print("{s}\n", .{str});
