@@ -72,6 +72,11 @@ pub fn toCInt(buf_len: usize) c_int {
     }
 }
 
+pub fn isNodeType(value: c_int, expected: NodeType) bool {
+    const maybe_node = std.meta.intToEnum(NodeType, value) catch return false;
+    return maybe_node == expected;
+}
+
 // parse the xml and return an array of all text values of <t> elements
 fn readSharedStrings(buf: []const u8) ![][]u8 {
     // usize to c_int for xmlReaderforMemory
@@ -105,7 +110,8 @@ fn readSharedStrings(buf: []const u8) ![][]u8 {
             ret = c.xmlTextReaderRead(reader);
             if (ret == 1) {
                 const nodeType = c.xmlTextReaderNodeType(reader);
-                if (@as(NodeType, nodeType) == NodeType.Text) {
+                // if (@intToEnum(NodeType, nodeType) == NodeType.Text) {
+                if (isNodeType(nodeType, NodeType.Text)) {
                     const value = c.xmlTextReaderConstValue(reader);
                     if (value != null) {
                         // allocate memory and copy the value to sharedStrings[index]
