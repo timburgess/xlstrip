@@ -61,101 +61,21 @@ fn printNodeTypeName(nodeType: NodeType) void {
     }
 }
 
-
-fn checkColumnNodeForCell(reader: ?*c.xmlTextReader, col: []const u8) !?u32 {
-    const nodeName = c.xmlTextReaderConstName(reader);
-
-    // if node is not <c> return
-    if (!std.mem.eql(u8, std.mem.span(nodeName), "c")) {
-        return null;
-    }
-
-    const rAttr = c.xmlTextReaderGetAttribute(reader, "r");
-    if (rAttr == null) {
-        return null;
-    }
-    defer c.free(rAttr);
-    // debug.print("rAttr: {s}\n", .{rAttr});
-
-    // check if rAttr is a cell of desired column
-    if (!std.mem.startsWith(u8, std.mem.span(rAttr), col)) {
-        return null;
-    }
-    // debug.print("rAttr is of col {s}.\n", .{col});
-
-    // advance to next node
-    var ret = c.xmlTextReaderRead(reader);
-    if (ret == -1) {
-        return error.XMLReadError;
-    }
-    if (ret == 0) { // end of document
-        return null;
-    }
-
-    const nextNodeName = c.xmlTextReaderConstName(reader);
-    if (!std.mem.eql(u8, std.mem.span(nextNodeName), "v")) {
-        return null;
-    }
-    // debug.print("vNodeName is v: {s}\n", .{vNodeName});
-
-    // advance to next (text) node
-    ret = c.xmlTextReaderRead(reader);
-    if (ret == -1) {
-        return error.XMLReadError;
-    }
-    if (ret == 0) { // end of document
-        return null;
-    }
-
-    // if next node is Text then read the value
-    const nodeType = c.xmlTextReaderNodeType(reader);
-    if (@intToEnum(NodeType, nodeType) != NodeType.Text) {
-        // unsure what this node is so return
-        return null;
-    }
-
-    const value = c.xmlTextReaderConstValue(reader);
-    if (value == null) {
-        return null;
-    }
-
-    return try parseInt(u32, std.mem.span(value), 10);
-}
-
-// function to find all <c> nodes that have an attribute of r that matches the column
-// e.g. r="B1", r="B2", etc.
-//
-//   <sheetData>
-//    <row r="1" spans="1:16">
-//      <c r="B1" t="s">
-//        <v>22</v>
-//      </c>
-//      <c r="C1" t="s">
-//        <v>0</v>
-//      </c>
-//
-// for each of these nodes, read the <v> text node and lookup the string in sharedStrings
-//
-fn readSheet(buf: []const u8, col: []const u8, sharedStrings: [][]u8) !void {
-    const reader = c.xmlReaderForMemory(buf.ptr, @intCast(c_int, buf.len), null, null, 0);
-    if (reader == null) {
-        return error.ReaderIsNull;
-    }
-    defer c.xmlFreeTextReader(reader);
-
-    var ret = c.xmlTextReaderRead(reader);
-    while (ret == 1) {
-        const sharedIndex = try checkColumnNodeForCell(reader, col);
-        if (sharedIndex != null) {
-            debug.print("{s}\n", .{sharedStrings[sharedIndex.?]});
-        }
-        ret = c.xmlTextReaderRead(reader);
+pub fn toCInt(buf_len: usize) c_int {
+    const maybe = std.math.cast(c_int, buf_len);
+    if (maybe) |value| {
+        return value;
+    } else {
+        std.debug.print("Error: buffer length ({}) exceeds c_int range\n", .{buf_len});
+        // TODO: terminate better
+        return 0;
     }
 }
 
 // parse the xml and return an array of all text values of <t> elements
 fn readSharedStrings(buf: []const u8) ![][]u8 {
-    const reader = c.xmlReaderForMemory(buf.ptr, @intCast(c_int, buf.len), null, null, 0);
+    // usize to c_int for xmlReaderforMemory
+    const reader = c.xmlReaderForMemory(buf.ptr, toCInt(buf.len), null, null, 0);
     defer c.xmlFreeTextReader(reader);
     if (reader == null) {
         return error.ReaderIsNull;
@@ -185,7 +105,7 @@ fn readSharedStrings(buf: []const u8) ![][]u8 {
             ret = c.xmlTextReaderRead(reader);
             if (ret == 1) {
                 const nodeType = c.xmlTextReaderNodeType(reader);
-                if (@intToEnum(NodeType, nodeType) == NodeType.Text) {
+                if (@as(NodeType, nodeType) == NodeType.Text) {
                     const value = c.xmlTextReaderConstValue(reader);
                     if (value != null) {
                         // allocate memory and copy the value to sharedStrings[index]
@@ -236,7 +156,7 @@ fn readZipFileContents(path: [*c]const u8, filename: [*c]const u8) ![]u8 {
     }
 
     // load file contents into buffer
-    var buf = try allocator.alloc(u8, stat.size);
+    const buf = try allocator.alloc(u8, stat.size);
     const read = c.zip_fread(strs, buf.ptr, stat.size);
     if (read != stat.size) {
         debug.print("error: Failed to read {s}\n", .{filename});
@@ -256,7 +176,6 @@ fn fileExists(filepath: []const u8) bool {
 // e.g. ./xlstrip "src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx" "B"
 //
 pub fn main() !void {
-
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
@@ -273,6 +192,8 @@ pub fn main() !void {
 
     const col = args[2];
 
+    _ = col;
+
     // load all strings used in the spreadsheet (aka 'shared strings')
     const sharedStringsBuf = try readZipFileContents(spreadsheetPath, "xl/sharedStrings.xml");
     // debug.print("{s}\n", .{sharedStringsBuf[0..]});
@@ -281,49 +202,45 @@ pub fn main() !void {
     defer allocator.free(sharedStrings);
     defer for (sharedStrings) |str| allocator.free(str);
 
-    // for (sharedStrings) |str| {
-    //     debug.print("{s}\n", .{str});
-    // }
-
-    // load worksheet
-    const worksheetBuf = try readZipFileContents(spreadsheetPath, "xl/worksheets/sheet1.xml");
-    // debug.print("{s}\n", .{worksheetBuf[0..]});
-
-    // Call function to find all <c> nodes that have an attribute of the required column
-    // For each of these nodes, read the value and lookup the string in sharedStrings
-    // and print the string
-    try readSheet(worksheetBuf, col, sharedStrings);
-}
-
-// `zig build test` to run tests
-
-test "xml read" {
-    const ctx = c.xmlNewParserCtxt();
-    defer c.xmlFreeParserCtxt(ctx);
-    // assert context valid (not null)
-    if (ctx == null) {
-        debug.print("context is null\n", .{});
-        return;
-    }
-
-    const reader = c.xmlReaderForFile("src/test/test.xml", null, 0);
-    defer c.xmlFreeTextReader(reader);
-    // check reader != null
-    if (reader == null) {
-        debug.print("reader is null\n", .{});
-        return;
-    }
-
-    var ret = c.xmlTextReaderRead(reader);
-    while (ret == 1) {
-        const name = c.xmlTextReaderConstName(reader);
-        const value = c.xmlTextReaderConstValue(reader);
-        if (name != null) {
-            debug.print("name: {s}\n", .{name});
-        }
-        if (value != null) {
-            debug.print("value: {s}\n", .{value});
-        }
-        ret = c.xmlTextReaderRead(reader);
+    for (sharedStrings) |str| {
+        debug.print("{s}\n", .{str});
     }
 }
+
+// pub fn main() !void {
+//     // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
+//     std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+
+//     // stdout is for the actual output of your application, for example if you
+//     // are implementing gzip, then only the compressed bytes should be sent to
+//     // stdout, not any debugging messages.
+//     const stdout_file = std.io.getStdOut().writer();
+//     var bw = std.io.bufferedWriter(stdout_file);
+//     const stdout = bw.writer();
+
+//     try stdout.print("Run `zig build test` to run the tests.\n", .{});
+
+//     try bw.flush(); // Don't forget to flush!
+// }
+
+// test "simple test" {
+//     var list = std.ArrayList(i32).init(std.testing.allocator);
+//     defer list.deinit(); // Try commenting this out and see if zig detects the memory leak!
+//     try list.append(42);
+//     try std.testing.expectEqual(@as(i32, 42), list.pop());
+// }
+
+// test "use other module" {
+//     try std.testing.expectEqual(@as(i32, 150), lib.add(100, 50));
+// }
+
+// test "fuzz example" {
+//     const Context = struct {
+//         fn testOne(context: @This(), input: []const u8) anyerror!void {
+//             _ = context;
+//             // Try passing `--fuzz` to `zig build test` and see if it manages to fail this test case!
+//             try std.testing.expect(!std.mem.eql(u8, "canyoufindme", input));
+//         }
+//     };
+//     try std.testing.fuzz(Context{}, Context.testOne, .{});
+// }
