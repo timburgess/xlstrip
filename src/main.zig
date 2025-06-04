@@ -78,9 +78,96 @@ pub fn toCInt(buf_len: usize) c_int {
     }
 }
 
-pub fn isNodeType(value: c_int, expected: NodeType) bool {
-    const maybe_node = std.meta.intToEnum(NodeType, value) catch return false;
-    return maybe_node == expected;
+fn checkColumnNodeForCell(reader: ?*c.xmlTextReader, col: []const u8) !?u32 {
+    const nodeName = c.xmlTextReaderConstName(reader);
+
+    // if node is not <c> return
+    if (!std.mem.eql(u8, std.mem.span(nodeName), "c")) {
+        return null;
+    }
+
+    const rAttr = c.xmlTextReaderGetAttribute(reader, "r");
+    if (rAttr == null) {
+        return null;
+    }
+    defer c.free(rAttr);
+    // debug.print("rAttr: {s}\n", .{rAttr});
+
+    // check if rAttr is a cell of desired column
+    if (!std.mem.startsWith(u8, std.mem.span(rAttr), col)) {
+        return null;
+    }
+    // debug.print("rAttr is of col {s}.\n", .{col});
+
+    // advance to next node
+    var ret = c.xmlTextReaderRead(reader);
+    if (ret == -1) {
+        return error.XMLReadError;
+    }
+    if (ret == 0) { // end of document
+        return null;
+    }
+
+    const nextNodeName = c.xmlTextReaderConstName(reader);
+    if (!std.mem.eql(u8, std.mem.span(nextNodeName), "v")) {
+        return null;
+    }
+    // debug.print("vNodeName is v: {s}\n", .{vNodeName});
+
+    // advance to next (text) node
+    ret = c.xmlTextReaderRead(reader);
+    if (ret == -1) {
+        return error.XMLReadError;
+    }
+    if (ret == 0) { // end of document
+        return null;
+    }
+
+    // if next node is Text then read the value
+    const nodeType = c.xmlTextReaderNodeType(reader);
+    // if (@intToEnum(NodeType, nodeType) != NodeType.Text) {
+    if (!NodeType.Text.matches(nodeType)) {
+        // unsure what this node is so return
+        return null;
+    }
+
+    const value = c.xmlTextReaderConstValue(reader);
+    if (value == null) {
+        return null;
+    }
+
+    return try parseInt(u32, std.mem.span(value), 10);
+}
+
+// function to find all <c> nodes that have an attribute of r that matches the column
+// e.g. r="B1", r="B2", etc.
+//
+//   <sheetData>
+//    <row r="1" spans="1:16">
+//      <c r="B1" t="s">
+//        <v>22</v>
+//      </c>
+//      <c r="C1" t="s">
+//        <v>0</v>
+//      </c>
+//
+// for each of these nodes, read the <v> text node and lookup the string in sharedStrings
+//
+fn readSheet(buf: []const u8, col: []const u8, sharedStrings: [][]u8) !void {
+    const reader = c.xmlReaderForMemory(buf.ptr, toCInt(buf.len), null, null, 0);
+    if (reader == null) {
+        return error.ReaderIsNull;
+    }
+    defer c.xmlFreeTextReader(reader);
+
+    var ret = c.xmlTextReaderRead(reader);
+    while (ret == 1) {
+        const sharedIndex = try checkColumnNodeForCell(reader, col);
+        if (sharedIndex != null) {
+            debug.print("{s}\n", .{sharedStrings[sharedIndex.?]});
+        }
+        ret = c.xmlTextReaderRead(reader);
+    }
 }
 
 // parse the xml and return an array of all text values of <t> elements
@@ -203,8 +290,6 @@ pub fn main() !void {
 
     const col = args[2];
 
-    _ = col;
-
     // load all strings used in the spreadsheet (aka 'shared strings')
     const sharedStringsBuf = try readZipFileContents(spreadsheetPath, "xl/sharedStrings.xml");
     // debug.print("{s}\n", .{sharedStringsBuf[0..]});
@@ -213,9 +298,18 @@ pub fn main() !void {
     defer allocator.free(sharedStrings);
     defer for (sharedStrings) |str| allocator.free(str);
 
-    for (sharedStrings) |str| {
-        debug.print("{s}\n", .{str});
-    }
+    // for (sharedStrings) |str| {
+    //     debug.print("{s}\n", .{str});
+    // }
+
+    // load worksheet
+    const worksheetBuf = try readZipFileContents(spreadsheetPath, "xl/worksheets/sheet1.xml");
+    // debug.print("{s}\n", .{worksheetBuf[0..]});
+
+    // Call function to find all <c> nodes that have an attribute of the required column
+    // For each of these nodes, read the value and lookup the string in sharedStrings
+    // and print the string
+    try readSheet(worksheetBuf, col, sharedStrings);
 }
 
 // pub fn main() !void {
