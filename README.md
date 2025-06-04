@@ -41,17 +41,6 @@ xlstrip /full/path/to/spreadsheet.xlsx B
 
 ---
 
-## 📁 Distribution
-
-To get a ready-to-use binary, check the `/dist` directory after running:
-
-```bash
-zig build dist
-```
-
-This copies the binary into the `./dist/` folder for easy distribution or deployment.
-
----
 
 ## 📄 License
 
