@@ -32,6 +32,12 @@ const NodeType = enum(c_int) {
     EndElement = 15,
     EndEntity = 16,
     XMLDeclaration = 17,
+
+    /// Checks if a given c_int matches `self`.
+    pub fn matches(self: NodeType, value: c_int) bool {
+        const maybe_node = std.meta.intToEnum(NodeType, value) catch return false;
+        return maybe_node == self;
+    }
 };
 
 // define parser options to ignore whitespace, etc.
@@ -110,8 +116,7 @@ fn readSharedStrings(buf: []const u8) ![][]u8 {
             ret = c.xmlTextReaderRead(reader);
             if (ret == 1) {
                 const nodeType = c.xmlTextReaderNodeType(reader);
-                // if (@intToEnum(NodeType, nodeType) == NodeType.Text) {
-                if (isNodeType(nodeType, NodeType.Text)) {
+                if (NodeType.Text.matches(nodeType)) {
                     const value = c.xmlTextReaderConstValue(reader);
                     if (value != null) {
                         // allocate memory and copy the value to sharedStrings[index]
