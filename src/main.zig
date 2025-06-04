@@ -229,15 +229,6 @@ fn readZipFileContents(path: [*c]const u8, filename: [*c]const u8) ![]u8 {
     }
 
     var stat: c.zip_stat_t = undefined;
-    // var i: u64 = 0;
-    // while (true) {
-    //     const ret = c.zip_stat_index(archive, i, 0, &stat);
-    //     if (ret != 0) {
-    //         break;
-    //     }
-    //     debug.print("name: {s}\n", .{stat.name});
-    //     i += 1;
-    // }
 
     // open filename and stat size
     const ret = c.zip_stat(archive, filename, 0, &stat);
@@ -312,40 +303,35 @@ pub fn main() !void {
     try readSheet(worksheetBuf, col, sharedStrings);
 }
 
-// pub fn main() !void {
-//     // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-//     std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+// `zig build test` to run tests - TODO
 
-//     // stdout is for the actual output of your application, for example if you
-//     // are implementing gzip, then only the compressed bytes should be sent to
-//     // stdout, not any debugging messages.
-//     const stdout_file = std.io.getStdOut().writer();
-//     var bw = std.io.bufferedWriter(stdout_file);
-//     const stdout = bw.writer();
+test "xml read" {
+    const ctx = c.xmlNewParserCtxt();
+    defer c.xmlFreeParserCtxt(ctx);
+    // assert context valid (not null)
+    if (ctx == null) {
+        debug.print("context is null\n", .{});
+        return;
+    }
 
-//     try stdout.print("Run `zig build test` to run the tests.\n", .{});
+    const reader = c.xmlReaderForFile("src/test/test.xml", null, 0);
+    defer c.xmlFreeTextReader(reader);
+    // check reader != null
+    if (reader == null) {
+        debug.print("reader is null\n", .{});
+        return;
+    }
 
-//     try bw.flush(); // Don't forget to flush!
-// }
-
-// test "simple test" {
-//     var list = std.ArrayList(i32).init(std.testing.allocator);
-//     defer list.deinit(); // Try commenting this out and see if zig detects the memory leak!
-//     try list.append(42);
-//     try std.testing.expectEqual(@as(i32, 42), list.pop());
-// }
-
-// test "use other module" {
-//     try std.testing.expectEqual(@as(i32, 150), lib.add(100, 50));
-// }
-
-// test "fuzz example" {
-//     const Context = struct {
-//         fn testOne(context: @This(), input: []const u8) anyerror!void {
-//             _ = context;
-//             // Try passing `--fuzz` to `zig build test` and see if it manages to fail this test case!
-//             try std.testing.expect(!std.mem.eql(u8, "canyoufindme", input));
-//         }
-//     };
-//     try std.testing.fuzz(Context{}, Context.testOne, .{});
-// }
+    var ret = c.xmlTextReaderRead(reader);
+    while (ret == 1) {
+        const name = c.xmlTextReaderConstName(reader);
+        const value = c.xmlTextReaderConstValue(reader);
+        if (name != null) {
+            debug.print("name: {s}\n", .{name});
+        }
+        if (value != null) {
+            debug.print("value: {s}\n", .{value});
+        }
+        ret = c.xmlTextReaderRead(reader);
+    }
+}

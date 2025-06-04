@@ -1,22 +1,58 @@
 # xlstrip
-Strips a column from an Excel xlsx spreadsheet
 
-A simple but *fast* way to extract an Excel column.
+**xlstrip** is a small and fast command-line utility for stripping a column from an Excel `.xlsx` spreadsheet.
 
+The compiled binary is available in the `/dist` directory of this project.
 
+---
 
+## 🔧 Usage
 
-### Dependencies
+```bash
+xlstrip /full/path/to/spreadsheet.xlsx B
+```
 
-Requires `libsml2-dev` and `libzip-dev` packages
+- The first parameter is the full path to the `.xlsx` file.
+- The second parameter is the column letter to strip (e.g., `B` for the second column).
 
-### Build
+---
 
-Requires zig v0.11.0 - see https://ziglang.org/download/
+## 🛠️ Building from Source (Linux)
 
-Extract zig tar and add zig dir to your PATH. Then `zig build run`.
+1. Install required system libraries:
+   ```bash
+   sudo apt install libxml2-dev libzip-dev
+   ```
 
+2. Install [Zig 0.15](https://ziglang.org/download/):
 
-### Usage
+   Go to https://ziglang.org/download/ and download the current master
+   ```bash
+   tar -xf zig-linux-x86_64-0.15.0.tar.xz
+   export PATH="$PWD/zig-linux-x86_64-0.15.0:$PATH"
+   ```
 
-./zig-out/bin/xlstrip src/test/spreadsheet1/Test_Tags_Spreadsheet.xlsx B
+3. Build the project:
+   ```bash
+   zig build
+   ```
+
+   This will create the binary in `zig-out/bin/`.
+
+---
+
+## 📁 Distribution
+
+To get a ready-to-use binary, check the `/dist` directory after running:
+
+```bash
+zig build dist
+```
+
+This copies the binary into the `./dist/` folder for easy distribution or deployment.
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
