@@ -1,10 +1,5 @@
-const c = @cImport({
-    @cInclude("libxml/parser.h");
-    @cInclude("libxml/xmlreader.h");
-    @cInclude("zip.h");
-});
-
 const std = @import("std");
+const c = @import("c.zig").c;
 const debug = std.debug;
 const allocator = std.heap.c_allocator; // use c allocator for now
 const fs = std.fs;
